@@ -1,0 +1,1411 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Marks Calculator</title>
+    <!-- Load Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.7.1/dist/chart.min.js"></script>
+    <!-- Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class', // Enable dark mode
+            theme: {
+                fontFamily: {
+                    sans: ['Inter', 'sans-serif'],
+                },
+            },
+        };
+    </script>
+    <style>
+        /* Custom scrollbar for webkit browsers */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f5f9; /* cool-gray-100 */
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #64748b; /* cool-gray-500 */
+        }
+        .dark ::-webkit-scrollbar-track {
+            background: #1e293b; /* cool-gray-800 */
+        }
+        .dark ::-webkit-scrollbar-thumb {
+            background: #475569; /* cool-gray-600 */
+        }
+
+        /* Dark Mode Toggle Styles */
+        .toggle-checkbox:checked {
+            @apply: bg-blue-500;
+            right: 0;
+            border-color: #3b82f6; /* blue-500 */
+        }
+        .toggle-checkbox:checked + .toggle-label {
+            @apply: bg-blue-500;
+        }
+        .toggle-checkbox {
+            transition: all 0.2s ease-in-out;
+        }
+        .toggle-label {
+            transition: all 0.2s ease-in-out;
+        }
+
+        /* Loader for Gemini API */
+        .loader {
+            width: 48px;
+            height: 48px;
+            border: 5px solid #FFF;
+            border-bottom-color: #3b82f6; /* blue-500 */
+            border-radius: 50%;
+            display: inline-block;
+            box-sizing: border-box;
+            animation: rotation 1s linear infinite;
+        }
+        .dark .loader {
+            border: 5px solid #374151; /* gray-700 */
+            border-bottom-color: #3b82f6; /* blue-500 */
+        }
+        @keyframes rotation {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* Custom styles for printing */
+        @media print {
+            body {
+                -webkit-print-color-adjust: exact; /* Ensure colors print */
+                print-color-adjust: exact;
+                margin: 0;
+                padding: 0;
+                font-family: 'Inter', sans-serif;
+            }
+
+            /* Hide everything except the print-specific container */
+            body > *, .no-print {
+                display: none !important;
+            }
+
+            .print-container {
+                display: block !important;
+                position: absolute;
+                top: 0;
+                left: 0;
+                width: 100%;
+                margin: 0;
+                padding: 20px;
+                border: none;
+                box-shadow: none;
+                background-color: #ffffff !important; /* Force white background for print */
+                color: #000000 !important; /* Force black text */
+            }
+
+            .print-container h1, .print-container h2, .print-container h3, .print-container p {
+                color: #000000 !important;
+            }
+            .print-container .print-result-box {
+                background-color: #f3f4f6 !important; /* gray-100 */
+                border: 1px solid #d1d5db; /* gray-300 */
+                padding: 16px;
+                border-radius: 8px;
+            }
+            .print-container .print-chart-container {
+                width: 100% !important;
+                max-width: 600px;
+                margin-top: 24px;
+                page-break-inside: avoid; /* Don't split chart across pages */
+            }
+            
+            /* Ensure charts render in print */
+            canvas {
+                max-width: 100% !important;
+                display: block !important;
+            }
+        }
+    </style>
+    <!-- Script to apply dark mode from localStorage before page load to prevent flash -->
+    <script>
+        if (localStorage.getItem('theme') === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+            document.documentElement.classList.add('dark');
+        } else {
+            document.documentElement.classList.remove('dark');
+        }
+    </script>
+</head>
+<body class="bg-gray-100 dark:bg-gray-900 font-sans min-h-full flex justify-center p-4 transition-colors duration-300">
+    <div class="w-full max-w-md bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-6 transition-colors duration-300 overflow-y-auto max-h-[95vh] flex flex-col no-print">
+        
+        <!-- Header -->
+        <div class="flex justify-between items-center mb-6 flex-shrink-0">
+            <h1 class="text-2xl font-bold text-gray-900 dark:text-gray-100">Marks<span class="text-blue-500">Calc</span></h1>
+            
+            <div class="flex items-center space-x-3">
+                <!-- Dark Mode Toggle -->
+                <div class="flex items-center space-x-2">
+                    <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Dark Mode</span>
+                    <div class="relative inline-block w-10 mr-2 align-middle select-none transition duration-200 ease-in">
+                        <input type="checkbox" name="toggle" id="darkModeToggle" class="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white border-4 appearance-none cursor-pointer"/>
+                        <label for="darkModeToggle" class="toggle-label block overflow-hidden h-6 rounded-full bg-gray-300 cursor-pointer"></label>
+                    </div>
+                </div>
+                
+                <!-- Settings Button -->
+                <button id="settings-btn" class="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M10.343 3.94c.09-.542.56-.94 1.11-.94h1.093c.55 0 1.02.398 1.11.94l.149.894c.07.424.384.764.78.93.398.164.855.142 1.205-.108l.737-.527a1.125 1.125 0 011.45.12l.773.774c.39.389.44 1.002.12 1.45l-.527.737c-.25.35-.272.806-.108 1.204.165.397.505.71.93.78l.893.15c.543.09.94.56.94 1.11v1.093c0 .55-.398 1.02-.94 1.11l-.893.149c-.425.07-.765.383-.93.78-.165.398-.143.854.108 1.204l.527.738c.32.447.27.96-.12 1.45l-.774.773a1.125 1.125 0 01-1.449.12l-.738-.527c-.35-.25-.806-.272-1.203-.108-.397.165-.71.505-.78.93l-.15.893c-.09.543-.56.94-1.11.94h-1.094c-.55 0-1.019-.398-1.11-.94l-.149-.894c-.07-.424-.384-.764-.78-.93-.398-.164-.855-.142-1.205.108l-.737.527a1.125 1.125 0 01-1.45-.12l-.773-.774a1.125 1.125 0 01-.12-1.45l.527-.737c.25-.35.272.806.108-1.204-.165-.397-.505.71-.93-.78l-.893-.15c-.543-.09-.94-.56-.94-1.11v-1.093c0-.55.398-1.02.94-1.11l.893-.149c.425-.07.765-.383.93-.78.165-.398.143.854-.108-1.204l-.527-.738a1.125 1.125 0 01.12-1.45l.774-.773a1.125 1.125 0 011.449-.12l.738.527c.35.25.806.272 1.203.108.397-.165.71-.505.78-.93l.15-.893z" />
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                </button>
+            </div>
+        </div>
+        
+        <!-- Navigation Buttons -->
+        <div class="flex justify-center space-x-2 mb-4 flex-shrink-0">
+            <button id="view-records-btn" class="flex-1 text-center text-sm font-medium text-gray-700 bg-gray-200 hover:bg-gray-300 dark:text-gray-200 dark:bg-gray-600 dark:hover:bg-gray-700 px-3 py-2 rounded-lg shadow-md transition-all">
+                View Records
+            </button>
+            <button id="view-goal-btn" class="flex-1 text-center text-sm font-medium text-white bg-green-500 hover:bg-green-600 dark:bg-green-600 dark:hover:bg-green-700 px-3 py-2 rounded-lg shadow-md transition-all">
+                Goal Seeker
+            </button>
+        </div>
+
+        <!-- Main Calculator Page -->
+        <div id="main-page" class="flex-grow overflow-y-auto">
+            <!-- Form to Add Subjects -->
+            <div class="bg-gray-50 dark:bg-gray-700/50 p-4 rounded-lg mb-4">
+                <h2 class="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-3">Add Subject</h2>
+                <div class="space-y-3">
+                    <div>
+                        <label for="subject-name" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Subject Name</label>
+                        <input type="text" id="subject-name" placeholder="e.g., Mathematics" class="mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm text-gray-900 dark:text-gray-100">
+                    </div>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label for="marks-obtained" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Marks Obtained</label>
+                            <input type="number" id="marks-obtained" placeholder="e.g., 85" class="mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm text-gray-900 dark:text-gray-100">
+                        </div>
+                        <div>
+                            <label for="total-marks" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Total Marks</label>
+                            <input type="number" id="total-marks" placeholder="e.g., 100" class="mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm text-gray-900 dark:text-gray-100">
+                        </div>
+                    </div>
+                    <button id="add-subject-btn" class="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-lg shadow transition-colors">Add Subject</button>
+                </div>
+            </div>
+
+            <!-- List of Added Subjects -->
+            <div>
+                <h2 class="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-3">Subjects</h2>
+                <div id="subject-list" class="space-y-2">
+                    <p id="no-subjects-msg" class="text-gray-500 dark:text-gray-400 text-sm">No subjects added yet.</p>
+                    <!-- Subjects will be dynamically added here -->
+                </div>
+            </div>
+
+            <!-- NEW BUTTON -->
+            <button id="view-result-btn" class="hidden w-full bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-lg shadow transition-colors mt-4">
+                View Result
+            </button>
+
+            <!-- Results Section -->
+            <div id="result-section" class="hidden mt-6 pt-4 border-t border-gray-200 dark:border-gray-700">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-xl font-semibold text-gray-800 dark:text-gray-200">Result</h2>
+                    <button id="clear-all-btn" class="text-sm font-medium text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 transition-colors">Clear All</button>
+                </div>
+                <div class="bg-blue-50 dark:bg-gray-700 p-4 rounded-lg text-center shadow-inner">
+                    <p class="text-sm font-medium text-gray-600 dark:text-gray-300">Overall Percentage</p>
+                    <p id="result-percentage" class="text-4xl font-bold text-blue-600 dark:text-blue-400 my-1">0.00%</p>
+                    <p id="result-grade" class="text-xl font-semibold text-gray-700 dark:text-gray-200 mb-2">-</p>
+                    <p id="result-total-marks" class="text-sm text-gray-600 dark:text-gray-300">Total Marks: 0 / 0</p>
+                </div>
+
+                <!-- AI Study Tips Button -->
+                <button id="get-study-tips-btn" class="hidden w-full bg-gradient-to-r from-purple-500 to-indigo-600 hover:from-purple-600 hover:to-indigo-700 text-white font-bold py-2 px-4 rounded-lg shadow transition-all mt-4">
+                    ✨ Get Study Tips
+                </button>
+            </div>
+
+            <!-- Save Record Section (hidden by default) -->
+            <div id="save-record-section" class="hidden mt-6 pt-4 border-t border-gray-200 dark:border-gray-700">
+                <h2 class="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-3">Save This Record</h2>
+                <div class="space-y-3">
+                    <div>
+                        <label for="student-name" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Student Name</label>
+                        <input type="text" id="student-name" placeholder="e.g., John Doe" class="mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm text-gray-900 dark:text-gray-100">
+                    </div>
+                    <div>
+                        <label for="roll-number" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Roll Number</label>
+                        <input type="text" id="roll-number" placeholder="e.g., 101" class="mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm text-gray-900 dark:text-gray-100">
+                    </div>
+                    <button id="save-record-btn" class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-lg shadow transition-colors">Save Record</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Student Records Page -->
+        <div id="records-page" class="hidden flex-grow overflow-y-auto flex flex-col">
+            <div class="flex justify-between items-center mb-4 flex-shrink-0">
+                <h2 class="text-xl font-bold text-gray-800 dark:text-gray-200">Saved Records</h2>
+                <button id="back-to-main-from-records-btn" class="text-sm font-medium text-gray-700 bg-gray-200 hover:bg-gray-300 dark:text-gray-200 dark:bg-gray-600 dark:hover:bg-gray-700 px-3 py-1 rounded-lg shadow-md transition-all">Back to Calculator</button>
+            </div>
+
+            <!-- New Dashboard Section -->
+            <div id="dashboard-container" class="mb-6 bg-gray-50 dark:bg-gray-700/50 p-4 rounded-lg border border-gray-200 dark:border-gray-600 flex-shrink-0">
+                <div class="flex justify-between items-center mb-3">
+                    <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-200">Class Dashboard</h3>
+                    <button id="toggle-dashboard-btn" class="text-sm text-blue-500 hover:underline dark:text-blue-400">Hide</button>
+                </div>
+                <div id="dashboard-content">
+                    <div class="grid grid-cols-3 gap-4 text-center mb-4">
+                        <div>
+                            <p class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Avg. Score</p>
+                            <p id="dashboard-avg" class="text-xl font-bold text-blue-600 dark:text-blue-400">0.00%</p>
+                        </div>
+                        <div>
+                            <p class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">High Score</p>
+                            <p id="dashboard-high" class="text-xl font-bold text-green-600 dark:text-green-400">0.00%</p>
+                        </div>
+                        <div>
+                            <p class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Low Score</p>
+                            <p id="dashboard-low" class="text-xl font-bold text-red-600 dark:text-red-400">0.00%</p>
+                        </div>
+                    </div>
+                    <div>
+                        <h4 class="text-sm font-semibold text-gray-700 dark:text-gray-300 text-center mb-2">Grade Distribution</h4>
+                        <div class="max-w-[250px] mx-auto">
+                             <canvas id="grade-distribution-chart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Search and Export Bar -->
+            <div class="mb-4 flex space-x-2 flex-shrink-0">
+                <input type="text" id="search-records" placeholder="Search by name or roll no..." class="flex-grow block w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm text-gray-900 dark:text-gray-100">
+                <button id="export-csv-btn" class="p-2 bg-gray-200 hover:bg-gray-300 dark:bg-gray-600 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 rounded-md shadow-md transition-all" title="Export as CSV">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                    </svg>
+                </button>
+            </div>
+
+            <!-- Records List -->
+            <div id="records-list" class="space-y-3 flex-grow overflow-y-auto">
+                <p id="no-records-msg" class="text-gray-500 dark:text-gray-400 text-sm">No records found.</p>
+                <!-- Records will be dynamically added here -->
+            </div>
+        </div>
+
+        <!-- New Goal Seeker Page -->
+        <div id="goal-seeker-page" class="hidden flex-grow overflow-y-auto flex flex-col">
+            <div class="flex justify-between items-center mb-4 flex-shrink-0">
+                <h2 class="text-xl font-bold text-gray-800 dark:text-gray-200">Goal Seeker</h2>
+                <button id="back-to-main-from-goal-btn" class="text-sm font-medium text-gray-700 bg-gray-200 hover:bg-gray-300 dark:text-gray-200 dark:bg-gray-600 dark:hover:bg-gray-700 px-3 py-1 rounded-lg shadow-md transition-all">Back to Calculator</button>
+            </div>
+            
+            <!-- Goal Inputs -->
+            <div class="bg-gray-50 dark:bg-gray-700/50 p-4 rounded-lg mb-4 space-y-3">
+                 <div>
+                    <label for="goal-percentage" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Your Target Percentage (%)</label>
+                    <input type="number" id="goal-percentage" placeholder="e.g., 85" class="mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm text-gray-900 dark:text-gray-100">
+                </div>
+                <div>
+                    <label for="total-course-marks" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Total Course Marks (All exams combined)</label>
+                    <input type="number" id="total-course-marks" placeholder="e.g., 1000" class="mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm text-gray-900 dark:text-gray-100">
+                </div>
+                <div>
+                    <label for="remaining-exams" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Number of Remaining Exams (Optional)</label>
+                    <input type="number" id="remaining-exams" placeholder="e.g., 3" class="mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm text-gray-900 dark:text-gray-100">
+                </div>
+            </div>
+
+            <!-- Add Completed Subjects -->
+            <div class="bg-gray-50 dark:bg-gray-700/50 p-4 rounded-lg mb-4">
+                <h2 class="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-3">Add Completed Subjects</h2>
+                <div class="space-y-3">
+                    <div>
+                        <label for="goal-subject-name" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Subject Name</label>
+                        <input type="text" id="goal-subject-name" placeholder="e.g., Mid-Term English" class="mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm text-gray-900 dark:text-gray-100">
+                    </div>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label for="goal-marks-obtained" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Marks Obtained</label>
+                            <input type="number" id="goal-marks-obtained" placeholder="e.g., 70" class="mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm text-gray-900 dark:text-gray-100">
+                        </div>
+                        <div>
+                            <label for="goal-total-marks" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Total Marks</label>
+                            <input type="number" id="goal-total-marks" placeholder="e.g., 100" class="mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm text-gray-900 dark:text-gray-100">
+                        </div>
+                    </div>
+                    <button id="add-goal-subject-btn" class="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-lg shadow transition-colors">Add Subject</button>
+                </div>
+            </div>
+
+            <!-- List of Goal Subjects -->
+            <div class="mb-4">
+                <h2 class="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-3">Completed Subjects</h2>
+                <div id="goal-subject-list" class="space-y-2">
+                    <p id="goal-no-subjects-msg" class="text-gray-500 dark:text-gray-400 text-sm">No completed subjects added yet.</p>
+                    <!-- Subjects will be dynamically added here -->
+                </div>
+            </div>
+
+            <!-- Goal Result Section -->
+            <div class="mt-auto pt-4 border-t border-gray-200 dark:border-gray-700 flex-shrink-0">
+                 <button id="calculate-goal-btn" class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-4 rounded-lg shadow transition-colors text-lg">Calculate Goal</button>
+                <div id="goal-result" class="hidden mt-4 bg-blue-50 dark:bg-gray-700 p-4 rounded-lg text-center shadow-inner">
+                    <!-- Result will be shown here -->
+                </div>
+                 <!-- AI Study Plan Button -->
+                <button id="get-study-plan-btn" class="hidden w-full bg-gradient-to-r from-purple-500 to-indigo-600 hover:from-purple-600 hover:to-indigo-700 text-white font-bold py-2 px-4 rounded-lg shadow transition-all mt-4">
+                    ✨ Generate Study Plan
+                </button>
+            </div>
+        </div>
+
+        <!-- ----- MODALS ----- -->
+
+        <!-- Settings Modal -->
+        <div id="settings-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-75 flex items-center justify-center p-4 z-50">
+            <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 w-full max-w-sm">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="text-lg font-semibold text-gray-900 dark:text-gray-100">Settings</h3>
+                    <button id="close-settings-btn" class="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200">&times;</button>
+                </div>
+                <div>
+                    <label for="api-key-input" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Google AI Studio API Key</label>
+                    <input type="password" id="api-key-input" placeholder="Enter your API key" class="mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm text-gray-900 dark:text-gray-100">
+                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">Get your key from <a href="https://aistudio.google.com/" target="_blank" class="text-blue-500 underline">AI Studio</a>. Your key is saved locally in your browser.</p>
+                </div>
+                <div class="mt-4 flex justify-end space-x-2">
+                     <span id="api-key-saved-msg" class="text-sm text-green-600 dark:text-green-400" style="display: none;">Saved!</span>
+                    <button id="save-api-key-btn" class="px-4 py-2 bg-blue-500 text-white text-sm font-medium rounded-md shadow-sm hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">Save Key</button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Gemini API Modal -->
+        <div id="gemini-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-75 flex items-center justify-center p-4 z-50">
+            <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 w-full max-w-md">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 id="gemini-modal-title" class="text-lg font-semibold text-gray-900 dark:text-gray-100">Loading...</h3>
+                    <button id="close-gemini-modal-btn" class="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200">&times;</button>
+                </div>
+                <div id="gemini-modal-content" class="min-h-[100px] max-h-[60vh] overflow-y-auto text-gray-700 dark:text-gray-300">
+                    <div class="flex justify-center items-center h-full">
+                        <div class="loader"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- 
+    ================================================================
+    PRINT-ONLY CONTAINER
+    This is hidden by default and only becomes visible when printing.
+    ================================================================
+    -->
+    <div id="print-report-container" class="print-container hidden">
+        <!-- Content is dynamically added here by JS before printing -->
+    </div>
+
+
+    <!-- Chart.js helper functions need to be global for inline ontoggle -->
+    <script>
+        let chartInstances = {}; // To manage chart lifecycles
+
+        // This function must be global to be called by `ontoggle`
+        function handleChartToggle(event, recordId) {
+            const canvasId = `chart-${recordId}`;
+            if (event.target.open) {
+                // Details opened, render chart.
+                // We'll ask the main script (which is listening) to render this.
+                window.dispatchEvent(new CustomEvent('renderChart', { detail: { recordId: recordId } }));
+            } else {
+                // Details closed, destroy chart
+                if (chartInstances[canvasId]) {
+                    chartInstances[canvasId].destroy();
+                    delete chartInstances[canvasId];
+                }
+            }
+        }
+    </script>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // --- Page Elements ---
+            const mainPage = document.getElementById('main-page');
+            const recordsPage = document.getElementById('records-page');
+            const goalSeekerPage = document.getElementById('goal-seeker-page');
+            
+            const viewRecordsBtn = document.getElementById('view-records-btn');
+            const viewGoalBtn = document.getElementById('view-goal-btn');
+            const backToMainFromRecordsBtn = document.getElementById('back-to-main-from-records-btn');
+            const backToMainFromGoalBtn = document.getElementById('back-to-main-from-goal-btn');
+
+            // --- Main Page Elements ---
+            const subjectNameInput = document.getElementById('subject-name');
+            const marksObtainedInput = document.getElementById('marks-obtained');
+            const totalMarksInput = document.getElementById('total-marks');
+            const addSubjectBtn = document.getElementById('add-subject-btn');
+            const subjectList = document.getElementById('subject-list');
+            const noSubjectsMsg = document.getElementById('no-subjects-msg');
+            const resultPercentage = document.getElementById('result-percentage');
+            const resultGrade = document.getElementById('result-grade');
+            const resultTotalMarks = document.getElementById('result-total-marks');
+            const clearAllBtn = document.getElementById('clear-all-btn');
+            const resultSection = document.getElementById('result-section');
+            const viewResultBtn = document.getElementById('view-result-btn'); // <-- Added this
+            const saveRecordSection = document.getElementById('save-record-section');
+            const studentNameInput = document.getElementById('student-name');
+            const rollNumberInput = document.getElementById('roll-number');
+            const saveRecordBtn = document.getElementById('save-record-btn');
+
+            // --- Records Page Elements ---
+            const recordsList = document.getElementById('records-list');
+            const noRecordsMsg = document.getElementById('no-records-msg');
+            const searchRecordsInput = document.getElementById('search-records');
+            const exportCsvBtn = document.getElementById('export-csv-btn');
+
+            // --- New Dashboard Elements ---
+            const dashboardContainer = document.getElementById('dashboard-container');
+            const toggleDashboardBtn = document.getElementById('toggle-dashboard-btn');
+            const dashboardContent = document.getElementById('dashboard-content');
+            const dashboardAvg = document.getElementById('dashboard-avg');
+            const dashboardHigh = document.getElementById('dashboard-high');
+            const dashboardLow = document.getElementById('dashboard-low');
+            const gradeChartCanvas = document.getElementById('grade-distribution-chart');
+            let gradeChartInstance = null; // To manage dashboard chart
+
+            // --- Goal Seeker Elements ---
+            const goalPercentageInput = document.getElementById('goal-percentage');
+            const totalCourseMarksInput = document.getElementById('total-course-marks');
+            const remainingExamsInput = document.getElementById('remaining-exams');
+            const goalSubjectNameInput = document.getElementById('goal-subject-name');
+            const goalMarksObtainedInput = document.getElementById('goal-marks-obtained');
+            const goalTotalMarksInput = document.getElementById('goal-total-marks');
+            const addGoalSubjectBtn = document.getElementById('add-goal-subject-btn');
+            const goalSubjectList = document.getElementById('goal-subject-list');
+            const goalNoSubjectsMsg = document.getElementById('goal-no-subjects-msg');
+            const calculateGoalBtn = document.getElementById('calculate-goal-btn');
+            const goalResult = document.getElementById('goal-result');
+
+            // --- Dark Mode ---
+            const darkModeToggle = document.getElementById('darkModeToggle');
+            if (localStorage.getItem('theme') === 'dark') {
+                darkModeToggle.checked = true;
+            }
+            darkModeToggle.addEventListener('change', () => {
+                if (darkModeToggle.checked) {
+                    document.documentElement.classList.add('dark');
+                    localStorage.setItem('theme', 'dark');
+                } else {
+                    document.documentElement.classList.remove('dark');
+                    localStorage.setItem('theme', 'light');
+                }
+
+                // Re-render charts if on records page
+                if (!recordsPage.classList.contains('hidden')) {
+                    renderRecords(searchRecordsInput.value); // Re-renders dashboard chart
+
+                    // Re-render any open individual charts
+                    const openDetails = document.querySelectorAll('#records-list details[open]');
+                    openDetails.forEach(details => {
+                        const toggleAttr = details.getAttribute('ontoggle');
+                        const recordIdMatch = toggleAttr.match(/,\s*(\d+)\)/);
+                        if (recordIdMatch && recordIdMatch[1]) {
+                            const recordId = parseInt(recordIdMatch[1]);
+                            renderIndividualChartById(recordId);
+                        }
+                    });
+                }
+            });
+
+            // --- Settings Modal ---
+            const settingsModal = document.getElementById('settings-modal');
+            const settingsBtn = document.getElementById('settings-btn');
+            const closeSettingsBtn = document.getElementById('close-settings-btn');
+            const apiKeyInput = document.getElementById('api-key-input');
+            const saveApiKeyBtn = document.getElementById('save-api-key-btn');
+            const apiKeySavedMsg = document.getElementById('api-key-saved-msg');
+            apiKeyInput.value = localStorage.getItem('gemini-api-key') || '';
+            settingsBtn.addEventListener('click', () => settingsModal.classList.remove('hidden'));
+            closeSettingsBtn.addEventListener('click', () => settingsModal.classList.add('hidden'));
+            saveApiKeyBtn.addEventListener('click', () => {
+                const key = apiKeyInput.value.trim();
+                if (key) {
+                    localStorage.setItem('gemini-api-key', key);
+                    apiKeySavedMsg.style.display = 'inline';
+                    setTimeout(() => {
+                        apiKeySavedMsg.style.display = 'none';
+                        settingsModal.classList.add('hidden');
+                    }, 1000);
+                } else {
+                    localStorage.removeItem('gemini-api-key');
+                }
+            });
+
+            // --- Gemini Modal & API ---
+            const geminiModal = document.getElementById('gemini-modal');
+            const geminiModalTitle = document.getElementById('gemini-modal-title');
+            const geminiModalContent = document.getElementById('gemini-modal-content');
+            const closeGeminiModalBtn = document.getElementById('close-gemini-modal-btn');
+            const getStudyTipsBtn = document.getElementById('get-study-tips-btn');
+            const getStudyPlanBtn = document.getElementById('get-study-plan-btn');
+
+            closeGeminiModalBtn.addEventListener('click', () => geminiModal.classList.add('hidden'));
+
+            getStudyTipsBtn.addEventListener('click', async () => {
+                const apiKey = localStorage.getItem('gemini-api-key');
+                if (!apiKey) {
+                    showError("Please set your API key in Settings (gear icon) first.");
+                    return;
+                }
+                
+                showGeminiLoading("Getting Study Tips...");
+                
+                const subjectsText = subjects.map(s => `- ${s.name}: ${s.marks}/${s.total} (${((s.marks/s.total)*100).toFixed(1)}%)`).join('\n');
+                const prompt = `
+                    I'm a student and here are my recent results:
+                    ${subjectsText}
+                    My overall percentage is ${currentResult.percentage}% with a grade of "${currentResult.grade}".
+                    
+                    Please give me a single, concise, and actionable study tip (about 3-4 sentences) based on these results to help me improve or maintain my performance. Be encouraging.
+                `;
+
+                callGeminiAPI(prompt);
+            });
+            
+            getStudyPlanBtn.addEventListener('click', async () => {
+                const apiKey = localStorage.getItem('gemini-api-key');
+                if (!apiKey) {
+                    showError("Please set your API key in Settings (gear icon) first.");
+                    return;
+                }
+                
+                showGeminiLoading("Generating Study Plan...");
+
+                const goalText = document.getElementById('goal-result').innerText;
+                const completedSubjects = goalSubjects.map(s => `- ${s.name}: ${s.marks}/${s.total}`).join('\n');
+
+                const prompt = `
+                    I'm a student using a goal calculator. Here's my situation:
+                    - My Target: ${goalPercentageInput.value}%
+                    - Total Course Marks: ${totalCourseMarksInput.value}
+                    - My Completed Subjects:
+                    ${completedSubjects.length > 0 ? completedSubjects : "None yet."}
+                    - My Goal Calculation: ${goalText}
+                    
+                    Please generate a simple, 3-step action plan to help me achieve this goal. Be concise and motivational.
+                `;
+
+                callGeminiAPI(prompt);
+            });
+            
+            function showGeminiLoading(title) {
+                geminiModalTitle.textContent = title;
+                geminiModalContent.innerHTML = `<div class="flex justify-center items-center h-full"><div class="loader"></div></div>`;
+                geminiModal.classList.remove('hidden');
+            }
+
+            async function callGeminiAPI(prompt) {
+                const apiKey = localStorage.getItem('gemini-api-key');
+                // Use a proxy or serverless function in a real app to hide the API key
+                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+
+                try {
+                    const response = await fetch(apiUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            contents: [{ parts: [{ text: prompt }] }],
+                            systemInstruction: {
+                                parts: [{ text: "You are a friendly and helpful academic tutor for students." }]
+                            },
+                        })
+                    });
+
+                    if (!response.ok) {
+                        const errorData = await response.json();
+                        throw new Error(errorData.error ? errorData.error.message : "API request failed");
+                    }
+
+                    const result = await response.json();
+                    
+                    if (result.candidates && result.candidates.length > 0 &&
+                        result.candidates[0].content && result.candidates[0].content.parts &&
+                        result.candidates[0].content.parts.length > 0) {
+                        const text = result.candidates[0].content.parts[0].text;
+                        // Use <pre> to respect whitespace and newlines from the model
+                        geminiModalContent.innerHTML = `<pre class="whitespace-pre-wrap font-sans text-sm">${text}</pre>`;
+                    } else {
+                        // Handle cases where response structure is unexpected
+                         geminiModalContent.textContent = "Sorry, I couldn't get a response. The result format was unexpected.";
+                    }
+                } catch (error) {
+                    console.error("Gemini API Error:", error);
+                    geminiModalContent.textContent = `An error occurred. Please check your API key and network connection. (Error: ${error.message})`;
+                }
+            }
+
+            // --- Page Navigation ---
+            function showPage(pageId) {
+                mainPage.classList.add('hidden');
+                recordsPage.classList.add('hidden');
+                goalSeekerPage.classList.add('hidden');
+                
+                document.getElementById(pageId).classList.remove('hidden');
+            }
+
+            viewRecordsBtn.addEventListener('click', () => {
+                showPage('records-page');
+                renderRecords(); // Render records when page is viewed
+            });
+            
+            viewGoalBtn.addEventListener('click', () => {
+                showPage('goal-seeker-page');
+            });
+            
+            backToMainFromRecordsBtn.addEventListener('click', () => showPage('main-page'));
+            backToMainFromGoalBtn.addEventListener('click', () => showPage('main-page'));
+
+
+            // --- New Dashboard Toggle Listener ---
+            toggleDashboardBtn.addEventListener('click', () => {
+                const isHidden = dashboardContent.classList.toggle('hidden');
+                toggleDashboardBtn.textContent = isHidden ? 'Show' : 'Hide';
+            });
+
+            // --- Modal Functions ---
+            function showError(message) {
+                // A simple, non-blocking error notification
+                const errorBox = document.createElement('div');
+                errorBox.className = 'fixed bottom-4 right-4 bg-red-500 text-white px-4 py-2 rounded-lg shadow-lg z-50';
+                errorBox.textContent = message;
+                document.body.appendChild(errorBox);
+                setTimeout(() => {
+                    errorBox.remove();
+                }, 3000);
+            }
+            
+            function showSuccess(message) {
+                const successBox = document.createElement('div');
+                successBox.className = 'fixed bottom-4 right-4 bg-green-500 text-white px-4 py-2 rounded-lg shadow-lg z-50';
+                successBox.textContent = message;
+                document.body.appendChild(successBox);
+                setTimeout(() => {
+                    successBox.remove();
+                }, 2000);
+            }
+
+            // --- Main Calculator Logic ---
+            let subjects = [];
+            let currentResult = null;
+
+            addSubjectBtn.addEventListener('click', () => {
+                const name = subjectNameInput.value.trim();
+                const marks = parseFloat(marksObtainedInput.value);
+                const total = parseFloat(totalMarksInput.value);
+
+                if (name && !isNaN(marks) && !isNaN(total) && marks >= 0 && total > 0 && marks <= total) {
+                    subjects.push({ name, marks, total });
+                    renderSubjects();
+                    calculateResult();
+                    subjectNameInput.value = '';
+                    marksObtainedInput.value = '';
+                    totalMarksInput.value = '';
+                    subjectNameInput.focus();
+                } else {
+                    showError("Invalid input. Check all fields.");
+                }
+            });
+
+            function renderSubjects() {
+                subjectList.innerHTML = ''; // Clear list
+                if (subjects.length === 0) {
+                    subjectList.appendChild(noSubjectsMsg);
+                    noSubjectsMsg.classList.remove('hidden');
+                } else {
+                    noSubjectsMsg.classList.add('hidden');
+                    subjects.forEach((subject, index) => {
+                        const subjectEl = document.createElement('div');
+                        subjectEl.className = 'flex justify-between items-center bg-white dark:bg-gray-700 p-3 rounded-lg shadow-sm';
+                        subjectEl.innerHTML = `
+                            <div>
+                                <p class="font-medium text-gray-900 dark:text-gray-100">${subject.name}</p>
+                                <p class="text-sm text-gray-600 dark:text-gray-400">${subject.marks} / ${subject.total}</p>
+                            </div>
+                            <button data-index="${index}" class="remove-subject-btn text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300">
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                            </button>
+                        `;
+                        subjectList.appendChild(subjectEl);
+                    });
+                }
+            }
+
+            subjectList.addEventListener('click', (e) => {
+                if (e.target.closest('.remove-subject-btn')) {
+                    const index = e.target.closest('.remove-subject-btn').dataset.index;
+                    subjects.splice(index, 1);
+                    renderSubjects();
+                    calculateResult();
+                }
+            });
+
+            clearAllBtn.addEventListener('click', () => {
+                subjects = [];
+                currentResult = null;
+                renderSubjects();
+                calculateResult();
+                // saveRecordSection.classList.add('hidden'); // <-- No longer needed here
+                // getStudyTipsBtn.classList.add('hidden'); // <-- No longer needed here
+            });
+
+            function calculateResult() {
+                if (subjects.length === 0) {
+                    resultPercentage.textContent = '0.00%';
+                    resultGrade.textContent = '-';
+                    resultTotalMarks.textContent = 'Total Marks: 0 / 0';
+                    resultSection.classList.add('hidden');
+                    saveRecordSection.classList.add('hidden');
+                    getStudyTipsBtn.classList.add('hidden');
+                    viewResultBtn.classList.add('hidden'); // <-- Added this
+                    currentResult = null;
+                    return;
+                }
+
+                let totalMarksObtained = 0;
+                let totalPossibleMarks = 0;
+                subjects.forEach(subject => {
+                    totalMarksObtained += subject.marks;
+                    totalPossibleMarks += subject.total;
+                });
+
+                const percentage = (totalMarksObtained / totalPossibleMarks) * 100;
+                const grade = getGrade(percentage);
+
+                currentResult = {
+                    percentage: percentage.toFixed(2),
+                    grade: grade,
+                    totalMarksObtained: totalMarksObtained,
+                    totalPossibleMarks: totalPossibleMarks
+                };
+
+                resultPercentage.textContent = `${currentResult.percentage}%`;
+                resultGrade.textContent = currentResult.grade;
+                resultTotalMarks.textContent = `Total Marks: ${currentResult.totalMarksObtained} / ${currentResult.totalPossibleMarks}`;
+                
+                viewResultBtn.classList.remove('hidden'); // <-- Added this
+                
+                // resultSection.classList.remove('hidden'); // <-- Removed this
+                // saveRecordSection.classList.remove('hidden'); // <-- Removed this
+                // getStudyTipsBtn.classList.remove('hidden'); // <-- Removed this
+            }
+
+            function getGrade(percentage) {
+                if (percentage >= 90) return 'A+';
+                if (percentage >= 80) return 'A';
+                if (percentage >= 70) return 'B';
+                if (percentage >= 60) return 'C';
+                if (percentage >= 50) return 'D';
+                if (percentage >= 40) return 'E';
+                return 'F';
+            }
+
+            // --- View Result Button Click ---
+            viewResultBtn.addEventListener('click', () => {
+                if (currentResult) { // Only show if a result has been calculated
+                    resultSection.classList.remove('hidden');
+                    saveRecordSection.classList.remove('hidden');
+                    getStudyTipsBtn.classList.remove('hidden');
+                    
+                    // Scroll to the result section for better UX
+                    resultSection.scrollIntoView({ behavior: 'smooth' });
+                }
+            });
+
+            // --- New Charting Functions ---
+            function renderIndividualChartById(recordId) {
+                const records = getSavedRecords();
+                const record = records.find(r => r.id === recordId);
+                if (record) {
+                    renderIndividualChart(record);
+                }
+            }
+
+            // Listen for the custom event from the global toggle function
+            window.addEventListener('renderChart', (e) => {
+                renderIndividualChartById(e.detail.recordId);
+            });
+
+            function renderIndividualChart(record, canvasId) {
+                canvasId = canvasId || `chart-${record.id}`; // Use provided ID or default
+                const canvas = document.getElementById(canvasId);
+                if (!canvas) return;
+                
+                const ctx = canvas.getContext('2d');
+
+                // Destroy existing chart on this canvas if it exists
+                if (chartInstances[canvasId]) {
+                    chartInstances[canvasId].destroy();
+                }
+
+                const labels = record.subjects.map(s => s.name);
+                const data = record.subjects.map(s => (s.marks / s.total) * 100);
+                const isDark = document.documentElement.classList.contains('dark') && !canvas.closest('.print-container'); // Don't use dark mode for printing
+                const gridColor = isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)';
+                const labelColor = isDark ? '#e5e7eb' : '#374151'; // gray-200 : gray-700
+                const barColor = isDark ? 'rgba(96, 165, 250, 0.7)' : 'rgba(59, 130, 246, 0.6)'; // blue-400 / blue-500
+                const borderColor = isDark ? '#60a5fa' : '#3b82f6';
+
+                chartInstances[canvasId] = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: '% Score',
+                            data: data,
+                            backgroundColor: barColor,
+                            borderColor: borderColor,
+                            borderWidth: 1
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                max: 100,
+                                ticks: { color: labelColor },
+                                grid: { color: gridColor }
+                            },
+                            x: {
+                                ticks: { color: labelColor },
+                                grid: { color: gridColor }
+                            }
+                        },
+                        plugins: {
+                            legend: {
+                                display: false
+                            },
+                            tooltip: {
+                                callbacks: {
+                                    label: function(context) {
+                                        let label = context.dataset.label || '';
+                                        if (label) {
+                                            label += ': ';
+                                        }
+                                        if (context.parsed.y !== null) {
+                                            label += context.parsed.y.toFixed(2) + '%';
+                                        }
+                                        // Add raw marks
+                                        const subject = record.subjects[context.dataIndex];
+                                        label += ` (${subject.marks}/${subject.total})`;
+                                        return label;
+                                    }
+                                }
+                            }
+                        },
+                        // Disable animations when printing
+                        animation: canvas.closest('.print-container') ? { duration: 0 } : {}
+                    }
+                });
+            }
+
+            function renderRecords(filter = '') {
+                recordsList.innerHTML = ''; // Clear list
+                const allRecords = getSavedRecords();
+                const searchTerm = filter.toLowerCase().trim();
+
+                // --- 1. Dashboard Calculation ---
+                if (allRecords.length === 0) {
+                    dashboardContainer.classList.add('hidden'); // Hide dashboard if no records
+                } else {
+                    dashboardContainer.classList.remove('hidden');
+                    
+                    let totalPercentage = 0;
+                    let highScore = -Infinity;
+                    let lowScore = Infinity;
+                    const gradeCounts = { 'A+': 0, 'A': 0, 'B': 0, 'C': 0, 'D': 0, 'E': 0, 'F': 0 };
+
+                    allRecords.forEach(record => {
+                        const perc = parseFloat(record.result.percentage);
+                        totalPercentage += perc;
+                        if (perc > highScore) highScore = perc;
+                        if (perc < lowScore) lowScore = perc;
+                        if (gradeCounts.hasOwnProperty(record.result.grade)) {
+                            gradeCounts[record.result.grade]++;
+                        }
+                    });
+
+                    const avgPercentage = totalPercentage / allRecords.length;
+                    
+                    dashboardAvg.textContent = `${avgPercentage.toFixed(2)}%`;
+                    dashboardHigh.textContent = `${highScore.toFixed(2)}%`;
+                    dashboardLow.textContent = `${lowScore.toFixed(2)}%`;
+
+                    // Update Pie Chart
+                    const isDark = document.documentElement.classList.contains('dark');
+                    const labelColor = isDark ? '#e5e7eb' : '#374151'; // gray-200 : gray-700
+                    const chartLabels = Object.keys(gradeCounts);
+                    const chartData = Object.values(gradeCounts);
+
+                    if (gradeChartInstance) {
+                        gradeChartInstance.destroy(); // Destroy old chart
+                    }
+                    gradeChartInstance = new Chart(gradeChartCanvas, {
+                        type: 'pie',
+                        data: {
+                            labels: chartLabels.filter((_, i) => chartData[i] > 0), // Only show grades that exist
+                            datasets: [{
+                                data: chartData.filter(d => d > 0),
+                                backgroundColor: [
+                                    '#10b981', // A+ (green-500)
+                                    '#34d399', // A (green-400)
+                                    '#60a5fa', // B (blue-400)
+                                    '#fbbf24', // C (amber-400)
+                                    '#f97316', // D (orange-500)
+                                    '#ef4444', // E (red-500)
+                                    '#b91c1c'  // F (red-700)
+                                ].filter((_, i) => chartData[i] > 0), // Sync colors with data
+                                hoverOffset: 4
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            plugins: {
+                                legend: {
+                                    position: 'bottom',
+                                    labels: {
+                                        color: labelColor,
+                                        padding: 10,
+                                        boxWidth: 12
+                                    }
+                                }
+                            }
+                        }
+                    });
+                }
+
+                // --- 2. Filtered List Rendering ---
+                let filteredRecords = allRecords;
+                if (searchTerm) {
+                    filteredRecords = allRecords.filter(record =>
+                        record.name.toLowerCase().includes(searchTerm) ||
+                        (record.rollNo && record.rollNo.toLowerCase().includes(searchTerm))
+                    );
+                }
+
+                if (filteredRecords.length === 0) {
+                    if (searchTerm) {
+                        noRecordsMsg.textContent = 'No records match your search.';
+                    } else {
+                        noRecordsMsg.textContent = 'No records found.';
+                    }
+                    recordsList.appendChild(noRecordsMsg);
+                    noRecordsMsg.classList.remove('hidden');
+                } else {
+                    noRecordsMsg.classList.add('hidden');
+                    filteredRecords.reverse().forEach(record => { // Show newest first
+                        const recordEl = document.createElement('div');
+                        recordEl.className = 'bg-white dark:bg-gray-700 p-4 rounded-lg shadow-md';
+                        
+                        let subjectsHtml = record.subjects.map(s => 
+                            `<li class="text-sm text-gray-600 dark:text-gray-400">${s.name}: ${s.marks}/${s.total}</li>`
+                        ).join('');
+
+                        // Format the date for display
+                        const recordDate = new Date(record.timestamp).toLocaleString(undefined, {
+                            year: 'numeric', month: 'short', day: 'numeric',
+                            hour: 'numeric', minute: '2-digit', hour12: true
+                        });
+
+                        recordEl.innerHTML = `
+                            <div class="flex justify-between items-start">
+                                <div>
+                                    <h4 class="font-bold text-lg text-gray-900 dark:text-gray-100">${record.name}</h4>
+                                    <p class="text-sm text-gray-600 dark:text-gray-400 mb-1">Roll: ${record.rollNo}</p>
+                                    <p class="text-xs text-gray-500 dark:text-gray-400 mb-2">${recordDate}</p>
+                                    <p class="font-semibold text-blue-600 dark:text-blue-400">${record.result.percentage}% (${record.result.grade})</p>
+                                    <p class="text-sm text-gray-700 dark:text-gray-300">Total: ${record.result.totalMarksObtained} / ${record.result.totalPossibleMarks}</p>
+                                </div>
+                                <div class="flex flex-col items-end space-y-2">
+                                    <button data-id="${record.id}" class="print-record-btn text-blue-500 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300" title="Print Report">
+                                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
+                                          <path stroke-linecap="round" stroke-linejoin="round" d="M6.72 13.829c-.24.03-.48.062-.72.096m.72-.096a42.415 42.415 0 0110.56 0m-10.56 0L6 18.25m0 0a2.25 2.25 0 002.25 2.25h8.25a2.25 2.25 0 002.25-2.25M9 18.25l-1.5-1.5m1.5 1.5l1.5-1.5M9 18.25l1.5 1.5m-1.5-1.5l-1.5 1.5m12-9l-3-3m0 0l-3 3m3-3v12.75m-6-12.75h4.5m-4.5 0H6.75" />
+                                        </svg>
+                                    </button>
+                                    <button data-id="${record.id}" class="delete-record-btn text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300" title="Delete Record">
+                                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
+                                            <path stroke-linecap="round" stroke-linejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12.54 0c-.27.045-.536.09-.8.136m15.086 0L21 5.79m-1.542 0l-2.17 13.877a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L3.457 5.79m15.086 0a48.108 48.108 0 00-3.478-.397m-12.54 0c-.27.045-.536.09-.8.136" />
+                                        </svg>
+                                    </button>
+                                </div>
+                            </div>
+                            <details class="mt-2" ontoggle="handleChartToggle(event, ${record.id})">
+                                <summary class="text-sm font-medium text-gray-600 dark:text-gray-400 cursor-pointer">View Details</summary>
+                                <div class="p-2">
+                                    <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1 mt-2">Subjects:</h5>
+                                    <ul class="list-disc list-inside mb-4 pl-4 space-y-1">
+                                        ${subjectsHtml}
+                                    </ul>
+                                    <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Subject Performance (%):</h5>
+                                    <div class="relative h-48">
+                                        <canvas id="chart-${record.id}"></canvas>
+                                    </div>
+                                </div>
+                            </details>
+                        `;
+                        recordsList.appendChild(recordEl);
+                    });
+                }
+            }
+            
+            // --- Record Storage Logic ---
+            function getSavedRecords() {
+                return JSON.parse(localStorage.getItem('studentRecords') || '[]');
+            }
+
+            function saveRecords(records) {
+                localStorage.setItem('studentRecords', JSON.stringify(records));
+            }
+
+            saveRecordBtn.addEventListener('click', () => {
+                const name = studentNameInput.value.trim();
+                const rollNo = rollNumberInput.value.trim();
+                if (!name || !rollNo) {
+                    showError("Please enter student name and roll number.");
+                    return;
+                }
+                if (!currentResult) {
+                    showError("No result to save. Please calculate first.");
+                    return;
+                }
+
+                const newRecord = {
+                    id: Date.now(), // Unique ID
+                    timestamp: new Date().toISOString(),
+                    name: name,
+                    rollNo: rollNo,
+                    subjects: subjects,
+                    result: currentResult
+                };
+
+                const records = getSavedRecords();
+                records.push(newRecord);
+                saveRecords(records);
+
+                showSuccess("Record saved!");
+                // Clear main page
+                clearAllBtn.click();
+                studentNameInput.value = '';
+                rollNumberInput.value = '';
+            });
+
+            recordsList.addEventListener('click', (e) => {
+                // Handle Delete
+                const deleteBtn = e.target.closest('.delete-record-btn');
+                if (deleteBtn) {
+                    const id = parseInt(deleteBtn.dataset.id);
+                    let records = getSavedRecords();
+                    records = records.filter(record => record.id !== id);
+                    saveRecords(records);
+                    renderRecords(searchRecordsInput.value); // Re-render list
+                    showSuccess("Record deleted.");
+                    return; // Stop further processing
+                }
+
+                // Handle Print
+                const printBtn = e.target.closest('.print-record-btn');
+                if (printBtn) {
+                    const id = parseInt(printBtn.dataset.id);
+                    preparePrint(id);
+                }
+            });
+
+            searchRecordsInput.addEventListener('input', (e) => {
+                renderRecords(e.target.value);
+            });
+            
+            // --- CSV Export Logic ---
+            exportCsvBtn.addEventListener('click', () => {
+                const records = getSavedRecords();
+                const searchTerm = searchRecordsInput.value.toLowerCase().trim();
+                
+                let filteredRecords = records;
+                if (searchTerm) {
+                    filteredRecords = records.filter(record =>
+                        record.name.toLowerCase().includes(searchTerm) ||
+                        (record.rollNo && record.rollNo.toLowerCase().includes(searchTerm))
+                    );
+                }
+
+                if (filteredRecords.length === 0) {
+                    showError("No records to export.");
+                    return;
+                }
+
+                // Define CSV Headers
+                let csvContent = "data:text/csv;charset=utf-8,";
+                csvContent += "Name,RollNo,Date,Percentage,Grade,TotalMarksObtained,TotalPossibleMarks,SubjectCount\n";
+
+                // Add Rows
+                filteredRecords.forEach(record => {
+                    const date = new Date(record.timestamp).toLocaleString();
+                    const row = [
+                        `"${record.name}"`,
+                        `"${record.rollNo}"`,
+                        `"${date}"`,
+                        record.result.percentage,
+                        record.result.grade,
+                        record.result.totalMarksObtained,
+                        record.result.totalPossibleMarks,
+                        record.subjects.length
+                    ].join(",");
+                    csvContent += row + "\n";
+                });
+
+                // Create and trigger download
+                const encodedUri = encodeURI(csvContent);
+                const link = document.createElement("a");
+                link.setAttribute("href", encodedUri);
+                link.setAttribute("download", `student_records_${new Date().toISOString().split('T')[0]}.csv`);
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            });
+
+            // --- Print Report Logic ---
+            function preparePrint(recordId) {
+                const records = getSavedRecords();
+                const record = records.find(r => r.id === recordId);
+                if (!record) return;
+
+                const printContainer = document.getElementById('print-report-container');
+                const printCanvasId = 'print-chart';
+                
+                const recordDate = new Date(record.timestamp).toLocaleString(undefined, {
+                    year: 'numeric', month: 'short', day: 'numeric',
+                    hour: 'numeric', minute: '2-digit', hour12: true
+                });
+
+                let subjectsHtml = record.subjects.map(s => `
+                    <tr style="border-bottom: 1px solid #e5e7eb;">
+                        <td style="padding: 8px 12px;">${s.name}</td>
+                        <td style="padding: 8px 12px; text-align: right;">${s.marks}</td>
+                        <td style="padding: 8px 12px; text-align: right;">${s.total}</td>
+                        <td style="padding: 8px 12px; text-align: right;">${((s.marks / s.total) * 100).toFixed(1)}%</td>
+                    </tr>
+                `).join('');
+
+                // 1. Build the HTML for the print container
+                printContainer.innerHTML = `
+                    <div style="padding: 20px; font-family: 'Inter', sans-serif;">
+                        <h1 style="font-size: 24px; font-weight: bold; color: #111827; margin-bottom: 4px;">Student Report Card</h1>
+                        <p style="font-size: 14px; color: #4b5563;">Generated on: ${new Date().toLocaleString()}</p>
+                        <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 20px 0;" />
+
+                        <!-- Student Details -->
+                        <div style="margin-bottom: 24px;">
+                            <h2 style="font-size: 18px; font-weight: 600; color: #111827; margin-bottom: 12px;">Student Details</h2>
+                            <p style="font-size: 16px; color: #374151; margin-bottom: 4px;"><strong style="color: #111827;">Name:</strong> ${record.name}</p>
+                            <p style="font-size: 16px; color: #374151; margin-bottom: 4px;"><strong style="color: #111827;">Roll No:</strong> ${record.rollNo}</p>
+                            <p style="font-size: 16px; color: #374151;"><strong style="color: #111827;">Record Date:</strong> ${recordDate}</p>
+                        </div>
+
+                        <!-- Final Result -->
+                        <div class="print-result-box" style="margin-bottom: 24px;">
+                            <h2 style="font-size: 18px; font-weight: 600; color: #111827; margin-bottom: 12px; text-align: center;">Final Result</h2>
+                            <p style="font-size: 36px; font-weight: bold; color: #2563eb; text-align: center; margin: 0;">${record.result.percentage}%</p>
+                            <p style="font-size: 24px; font-weight: 600; color: #1f2937; text-align: center; margin: 4px 0;">Grade: ${record.result.grade}</p>
+                            <p style="font-size: 16px; color: #374151; text-align: center; margin-top: 8px;">
+                                Total: <strong>${record.result.totalMarksObtained} / ${record.result.totalPossibleMarks}</strong>
+                            </p>
+                        </div>
+                        
+                        <!-- Subject Breakdown -->
+                        <div style="margin-bottom: 24px; page-break-inside: avoid;">
+                            <h2 style="font-size: 18px; font-weight: 600; color: #111827; margin-bottom: 12px;">Subject Breakdown</h2>
+                            <table style="width: 100%; border-collapse: collapse; border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden;">
+                                <thead style="background-color: #f9fafb;">
+                                    <tr>
+                                        <th style="padding: 10px 12px; text-align: left; font-size: 12px; font-weight: 600; color: #4b5563; text-transform: uppercase;">Subject</th>
+                                        <th style="padding: 10px 12px; text-align: right; font-size: 12px; font-weight: 600; color: #4b5563; text-transform: uppercase;">Marks</th>
+                                        <th style="padding: 10px 12px; text-align: right; font-size: 12px; font-weight: 600; color: #4b5563; text-transform: uppercase;">Total</th>
+                                        <th style="padding: 10px 12px; text-align: right; font-size: 12px; font-weight: 600; color: #4b5563; text-transform: uppercase;">Percent</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${subjectsHtml}
+                                </tbody>
+                            </table>
+                        </div>
+                        
+                        <!-- Chart -->
+                        <div class="print-chart-container">
+                            <h2 style="font-size: 18px; font-weight: 600; color: #111827; margin-bottom: 12px;">Subject Performance (%)</h2>
+                            <div style="position: relative; height: 300px; width: 100%;">
+                                <canvas id="${printCanvasId}"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                `;
+
+                // 2. Render the chart in the print container
+                // We must do this *after* the container is in the DOM
+                // And *before* we call window.print()
+                renderIndividualChart(record, printCanvasId);
+                
+                // 3. Trigger the print dialog
+                // We use a short timeout to ensure the chart has time to render
+                setTimeout(() => {
+                    window.print();
+                    
+                    // 4. Clean up the print container and chart instance
+                    printContainer.innerHTML = '';
+                    if (chartInstances[printCanvasId]) {
+                        chartInstances[printCanvasId].destroy();
+                        delete chartInstances[printCanvasId];
+                    }
+                }, 250); // 250ms delay
+            }
+
+
+            // --- Goal Seeker Logic ---
+            let goalSubjects = [];
+            let currentGoalResult = null;
+            
+            addGoalSubjectBtn.addEventListener('click', () => {
+                const name = goalSubjectNameInput.value.trim();
+                const marks = parseFloat(goalMarksObtainedInput.value);
+                const total = parseFloat(goalTotalMarksInput.value);
+
+                if (name && !isNaN(marks) && !isNaN(total) && marks >= 0 && total > 0 && marks <= total) {
+                    goalSubjects.push({ name, marks, total });
+                    renderGoalSubjects();
+                    goalSubjectNameInput.value = '';
+                    goalMarksObtainedInput.value = '';
+                    goalTotalMarksInput.value = '';
+                    goalSubjectNameInput.focus();
+                } else {
+                    showError("Invalid input. Check all fields.");
+                }
+            });
+
+            function renderGoalSubjects() {
+                goalSubjectList.innerHTML = ''; // Clear list
+                if (goalSubjects.length === 0) {
+                    goalSubjectList.appendChild(goalNoSubjectsMsg);
+                    goalNoSubjectsMsg.classList.remove('hidden');
+                } else {
+                    goalNoSubjectsMsg.classList.add('hidden');
+                    goalSubjects.forEach((subject, index) => {
+                        const subjectEl = document.createElement('div');
+                        subjectEl.className = 'flex justify-between items-center bg-white dark:bg-gray-700 p-3 rounded-lg shadow-sm';
+                        subjectEl.innerHTML = `
+                            <div>
+                                <p class="font-medium text-gray-900 dark:text-gray-100">${subject.name}</p>
+                                <p class="text-sm text-gray-600 dark:text-gray-400">${subject.marks} / ${subject.total}</p>
+                            </div>
+                            <button data-index="${index}" class="remove-goal-subject-btn text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300">
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                            </button>
+                        `;
+                        goalSubjectList.appendChild(subjectEl);
+                    });
+                }
+            }
+
+            goalSubjectList.addEventListener('click', (e) => {
+                if (e.target.closest('.remove-goal-subject-btn')) {
+                    const index = e.target.closest('.remove-goal-subject-btn').dataset.index;
+                    goalSubjects.splice(index, 1);
+                    renderGoalSubjects();
+                }
+            });
+            
+            calculateGoalBtn.addEventListener('click', () => {
+                const targetPercent = parseFloat(goalPercentageInput.value);
+                const totalCourseMarks = parseFloat(totalCourseMarksInput.value);
+                const numRemainingExams = parseInt(remainingExamsInput.value) || 0;
+
+                if (isNaN(targetPercent) || isNaN(totalCourseMarks) || totalCourseMarks <= 0) {
+                    showError("Please enter a valid Target % and Total Course Marks.");
+                    return;
+                }
+
+                let marksAchieved = 0;
+                let marksCompleted = 0;
+                goalSubjects.forEach(s => {
+                    marksAchieved += s.marks;
+                    marksCompleted += s.total;
+                });
+
+                if (marksCompleted > totalCourseMarks) {
+                    showError("Completed marks cannot be more than total course marks.");
+                    return;
+                }
+
+                const targetMarks = (targetPercent / 100) * totalCourseMarks;
+                const marksNeeded = targetMarks - marksAchieved;
+                const marksRemaining = totalCourseMarks - marksCompleted;
+                
+                let resultHtml = "";
+                currentGoalResult = null; // Reset
+                
+                if (marksRemaining <= 0) {
+                    const finalPerc = (marksAchieved / totalCourseMarks) * 100;
+                    resultHtml = `
+                        <p class="font-semibold text-lg text-gray-800 dark:text-gray-100">Calculation Complete!</p>
+                        <p class="text-gray-700 dark:text-gray-300">You have already completed all ${totalCourseMarks} marks.</p>
+                        <p class="text-gray-700 dark:text-gray-300 mt-2">Your final score is <strong>${marksAchieved}/${totalCourseMarks}</strong>, which is <strong>${finalPerc.toFixed(2)}%</strong>.</p>
+                    `;
+                } else if (marksNeeded <= 0) {
+                     resultHtml = `
+                        <p class="font-semibold text-lg text-green-700 dark:text-green-300">Goal Achieved! 🎉</p>
+                        <p class="text-gray-700 dark:text-gray-300">You have already scored ${marksAchieved} marks, which is more than the ${targetMarks.toFixed(0)} marks needed for your ${targetPercent}% target.</p>
+                        <p class="text-gray-700 dark:text-gray-300 mt-2">You just need <strong>0</strong> marks in your remaining <strong>${marksRemaining}</strong> marks.</p>
+                    `;
+                } else if (marksNeeded > marksRemaining) {
+                    resultHtml = `
+                        <p class="font-semibold text-lg text-red-700 dark:text-red-300">Goal is Impossible 😥</p>
+                        <p class="text-gray-700 dark:text-gray-300">You need <strong>${marksNeeded.toFixed(1)}</strong> more marks, but there are only <strong>${marksRemaining}</strong> marks left to score.</p>
+                    `;
+                } else {
+                    const percentageNeeded = (marksNeeded / marksRemaining) * 100;
+                     resultHtml = `
+                        <p class="font-semibold text-lg text-blue-700 dark:text-blue-300">Here's your goal:</p>
+                        <p class="text-gray-700 dark:text-gray-300 mt-2">You need to score a total of</p>
+                        <p class="font-bold text-2xl text-blue-600 dark:text-blue-400 my-1">${marksNeeded.toFixed(1)} / ${marksRemaining} marks</p>
+                        <p class="text-gray-700 dark:text-gray-300">That's an average of <strong>${percentageNeeded.toFixed(2)}%</strong> in your remaining exams.</p>
+                    `;
+                    
+                    if (numRemainingExams > 0) {
+                        const marksPerExam = marksNeeded / numRemainingExams;
+                        resultHtml += `<p class="text-gray-700 dark:text-gray-300 mt-2">That's about <strong>${marksPerExam.toFixed(1)} marks per exam</strong> (avg) for your ${numRemainingExams} remaining exams.</p>`;
+                    }
+                }
+                
+                goalResult.innerHTML = resultHtml;
+                goalResult.classList.remove('hidden');
+                getStudyPlanBtn.classList.remove('hidden');
+                currentGoalResult = goalResult.innerText; // Save text for AI
+            });
+
+            // --- Initial Render ---
+            renderSubjects();
+            calculateResult();
+        });
+    </script>
+</body>
+</html>
